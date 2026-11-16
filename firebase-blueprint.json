@@ -1,0 +1,183 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user safety profile containing optional emergency details isolated to the owner.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name shown when raising or responding to alerts."
+        },
+        "bloodGroup": {
+          "type": "string",
+          "description": "Optional blood type for emergency reference."
+        },
+        "vehicleInfo": {
+          "type": "string",
+          "description": "Optional vehicle make, color, or license note."
+        },
+        "medicalNotes": {
+          "type": "string",
+          "description": "Optional allergy or medical condition notes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "displayName", "createdAt", "updatedAt"]
+    },
+    "SafetyAlert": {
+      "title": "SafetyAlert",
+      "description": "Community road safety SOS or accident alert broadcast to all active app users.",
+      "type": "object",
+      "properties": {
+        "reporterId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user who raised the alert."
+        },
+        "reporterName": {
+          "type": "string",
+          "description": "First or display name of the reporter."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["accident", "medical", "hazard", "breakdown"],
+          "description": "Incident category."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "moderate"],
+          "description": "Urgency level of the SOS alert."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional situational details about the road emergency."
+        },
+        "latitude": {
+          "type": "number",
+          "description": "GPS latitude of the incident (-90 to 90)."
+        },
+        "longitude": {
+          "type": "number",
+          "description": "GPS longitude of the incident (-180 to 180)."
+        },
+        "locationLabel": {
+          "type": "string",
+          "description": "Human-readable street, landmark, or coordinate label."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "resolved"],
+          "description": "Current alert lifecycle state."
+        },
+        "responderCount": {
+          "type": "integer",
+          "description": "Count of community helpers who accepted to respond."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "reporterId",
+        "reporterName",
+        "category",
+        "severity",
+        "description",
+        "latitude",
+        "longitude",
+        "locationLabel",
+        "status",
+        "responderCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AlertResponse": {
+      "title": "AlertResponse",
+      "description": "Record of a community helper responding to a specific SOS alert.",
+      "type": "object",
+      "properties": {
+        "responderId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the helper."
+        },
+        "responderName": {
+          "type": "string",
+          "description": "Display name of the helper."
+        },
+        "alertId": {
+          "type": "string",
+          "description": "Parent alert document ID."
+        },
+        "alertReporterId": {
+          "type": "string",
+          "description": "Denormalized reporter UID of the parent alert."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["responding", "arrived"],
+          "description": "Responder status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "responderId",
+        "responderName",
+        "alertId",
+        "alertReporterId",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Owner-isolated safety profile documents."
+    },
+    "/alerts/{alertId}": {
+      "schema": {
+        "$ref": "#/entities/SafetyAlert"
+      },
+      "description": "Community SOS and road accident alerts."
+    },
+    "/alerts/{alertId}/responses/{responderId}": {
+      "schema": {
+        "$ref": "#/entities/AlertResponse"
+      },
+      "description": "Subcollection of helpers responding to an SOS alert."
+    }
+  }
+}

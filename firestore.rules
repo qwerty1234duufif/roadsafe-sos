@@ -1,0 +1,193 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // --- Entity Validators ---
+    function isValidUserProfile(data) {
+      return data.userId is string &&
+             isValidId(data.userId) &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 60 &&
+             (!('bloodGroup' in data) || data.bloodGroup == null || (data.bloodGroup is string && data.bloodGroup.size() <= 12)) &&
+             (!('vehicleInfo' in data) || data.vehicleInfo == null || (data.vehicleInfo is string && data.vehicleInfo.size() <= 80)) &&
+             (!('medicalNotes' in data) || data.medicalNotes == null || (data.medicalNotes is string && data.medicalNotes.size() <= 200)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidAlert(data) {
+      return data.reporterId is string &&
+             isValidId(data.reporterId) &&
+             data.reporterName is string &&
+             data.reporterName.size() >= 1 &&
+             data.reporterName.size() <= 60 &&
+             data.category is string &&
+             data.category in ['accident', 'medical', 'hazard', 'breakdown'] &&
+             data.severity is string &&
+             data.severity in ['critical', 'high', 'moderate'] &&
+             data.description is string &&
+             data.description.size() <= 300 &&
+             (data.latitude is float || data.latitude is int) &&
+             data.latitude >= -90.0 &&
+             data.latitude <= 90.0 &&
+             (data.longitude is float || data.longitude is int) &&
+             data.longitude >= -180.0 &&
+             data.longitude <= 180.0 &&
+             data.locationLabel is string &&
+             data.locationLabel.size() >= 1 &&
+             data.locationLabel.size() <= 200 &&
+             data.status is string &&
+             data.status in ['active', 'resolved'] &&
+             data.responderCount is int &&
+             data.responderCount >= 0 &&
+             data.responderCount <= 10000 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidResponse(data) {
+      return data.responderId is string &&
+             isValidId(data.responderId) &&
+             data.responderName is string &&
+             data.responderName.size() >= 1 &&
+             data.responderName.size() <= 60 &&
+             data.alertId is string &&
+             isValidId(data.alertId) &&
+             data.alertReporterId is string &&
+             isValidId(data.alertReporterId) &&
+             data.status is string &&
+             data.status in ['responding', 'arrived'] &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    // --- Collection: /users/{userId} ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'bloodGroup', 'vehicleInfo', 'medicalNotes', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'bloodGroup', 'vehicleInfo', 'medicalNotes', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // --- Collection: /alerts/{alertId} ---
+    match /alerts/{alertId} {
+      allow get: if isSignedIn() &&
+                    isValidId(alertId) &&
+                    (existing().status == 'active' || existing().reporterId == request.auth.uid);
+
+      allow list: if isSignedIn() &&
+                     (existing().status == 'active' || existing().reporterId == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(alertId) &&
+                       incoming().reporterId == request.auth.uid &&
+                       incoming().status == 'active' &&
+                       incoming().responderCount == 0 &&
+                       incoming().keys().hasAll(['reporterId', 'reporterName', 'category', 'severity', 'description', 'latitude', 'longitude', 'locationLabel', 'status', 'responderCount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['reporterId', 'reporterName', 'category', 'severity', 'description', 'latitude', 'longitude', 'locationLabel', 'status', 'responderCount', 'createdAt', 'updatedAt']) &&
+                       isValidAlert(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(alertId) &&
+                       isValidAlert(incoming()) &&
+                       existing().status == 'active' &&
+                       incoming().reporterId == existing().reporterId &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Action 1: Alert reporter resolves or updates severity/description
+                         (existing().reporterId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'description', 'severity', 'updatedAt'])) ||
+                         // Action 2: Community responder atomically registers response and increments responderCount by 1
+                         (incoming().responderCount == existing().responderCount + 1 &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['responderCount', 'updatedAt']) &&
+                          !exists(/databases/$(database)/documents/alerts/$(alertId)/responses/$(request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/alerts/$(alertId)/responses/$(request.auth.uid)))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(alertId) && existing().reporterId == request.auth.uid;
+
+      // --- Subcollection: /alerts/{alertId}/responses/{responderId} ---
+      match /responses/{responderId} {
+        allow get: if isSignedIn() &&
+                      isValidId(alertId) &&
+                      isValidId(responderId) &&
+                      (request.auth.uid == responderId || existing().alertReporterId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       (existing().responderId == request.auth.uid || existing().alertReporterId == request.auth.uid);
+
+        allow create: if isSignedIn() &&
+                         isValidId(alertId) &&
+                         isValidId(responderId) &&
+                         responderId == request.auth.uid &&
+                         isValidResponse(incoming()) &&
+                         incoming().responderId == request.auth.uid &&
+                         incoming().alertId == alertId &&
+                         incoming().status == 'responding' &&
+                         incoming().keys().hasAll(['responderId', 'responderName', 'alertId', 'alertReporterId', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['responderId', 'responderName', 'alertId', 'alertReporterId', 'status', 'createdAt', 'updatedAt']) &&
+                         exists(/databases/$(database)/documents/alerts/$(alertId)) &&
+                         get(/databases/$(database)/documents/alerts/$(alertId)).data.status == 'active' &&
+                         incoming().alertReporterId == get(/databases/$(database)/documents/alerts/$(alertId)).data.reporterId;
+
+        allow update: if isSignedIn() &&
+                         isValidId(alertId) &&
+                         isValidId(responderId) &&
+                         request.auth.uid == responderId &&
+                         isValidResponse(incoming()) &&
+                         incoming().responderId == existing().responderId &&
+                         incoming().alertId == existing().alertId &&
+                         incoming().alertReporterId == existing().alertReporterId &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().status == 'responding' &&
+                         incoming().status == 'arrived' &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+        allow delete: if false;
+      }
+    }
+  }
+}

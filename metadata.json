@@ -1,0 +1,6 @@
+{
+  "name": "RoadSafe SOS",
+  "description": "Community road safety SOS alert app with real-time responder alerts, GPS location sharing, and Gemini AI emergency guidance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

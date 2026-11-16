@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">RoadSafe SOS</string>
+    <string name="notification_channel_name">SOS Emergency Alerts</string>
+    <string name="notification_channel_desc">Urgent real-time notifications when a nearby driver raises an accident or SOS alert.</string>
+    <string name="sign_in_title">Community Road Safety &amp; Rapid SOS</string>
+    <string name="sign_in_subtitle">Raise an instant accident alert, notify nearby drivers, and get Gemini AI hospital, ambulance &amp; first-aid guidance.</string>
+    <string name="sign_in_google_cta">Sign in with Google</string>
+    <string name="nav_live_alerts">Live Alerts</string>
+    <string name="nav_my_safety">My Safety</string>
+    <string name="sos_button_label">RAISE SOS ALERT</string>
+    <string name="help_button_label">I Can Help</string>
+    <string name="resolve_button_label">Mark Resolved / Safe</string>
+</resources>
